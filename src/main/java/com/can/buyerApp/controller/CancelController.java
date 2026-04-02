@@ -1,0 +1,91 @@
+package com.can.buyerApp.controller;
+
+import com.can.buyerApp.constants.PreConstants;
+import com.can.buyerApp.masterentity.CancelReason;
+import com.can.buyerApp.request.OnCancelRequest;
+import com.can.buyerApp.service.CancelService;
+import com.can.buyerApp.service.OnCancelService;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Objects;
+
+@Slf4j
+@RestController
+@ConditionalOnProperty(
+        name = "feature.cancel.enabled",
+        havingValue = "true",
+        matchIfMissing = false
+)
+public class CancelController {
+
+    private final CancelService cancelService;
+    private final OnCancelService onCancelService;
+
+    public CancelController(CancelService cancelService,
+                            OnCancelService onCancelService) {
+        this.cancelService = cancelService;
+        this.onCancelService = onCancelService;
+    }
+
+    @PostMapping("/cancel")
+    public ResponseEntity<?> cancelRequest(
+            @RequestParam String domain,
+            @RequestParam String type,
+            @RequestParam String transactionId,
+            @RequestParam Long cancellationReasonId,
+            @RequestParam String orderId,
+            @RequestParam String description) {
+
+        try {
+            log.info("Received cancel request with TransactionId: {}", transactionId);
+
+            if (PreConstants.VALID_DOMAIN.equals(domain)
+                    && PreConstants.VALID_TYPES.contains(type)
+                    && Objects.nonNull(transactionId)) {
+
+                return cancelService.sendCancelRequest(
+                        domain, type, transactionId,
+                        cancellationReasonId, orderId, description
+                );
+            }
+
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Invalid domain or type provided.");
+
+        } catch (Exception e) {
+            log.error("Error occurred while processing the cancel request", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("An error occurred while processing the cancel request.");
+        }
+    }
+
+    @PostMapping("/on_cancel")
+    public ResponseEntity<?> onCancelRequest(
+            @RequestBody OnCancelRequest onCancelRequest) {
+
+        if (Objects.isNull(onCancelRequest)) {
+            return ResponseEntity.badRequest()
+                    .body("Invalid onCancelRequest.");
+        }
+
+        try {
+            return ResponseEntity.ok(
+                    onCancelService.saveOnCancelRequest(onCancelRequest)
+            );
+        } catch (Exception e) {
+            log.error("Error processing onCancelRequest", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error processing on-Cancel Request.");
+        }
+    }
+
+    @GetMapping("/cancel_reason")
+    public List<CancelReason> getReason() {
+        return onCancelService.getCancelReason();
+    }
+}
